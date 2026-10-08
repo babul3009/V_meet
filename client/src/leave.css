@@ -1,0 +1,100 @@
+.leave-page, .leave-page * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Montserrat', sans-serif;
+}
+
+.leave-page {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(50vmax 45vmax at 0% 0%, #3b2a7a66, transparent 65%), radial-gradient(45vmax 45vmax at 100% 100%, #9f3a6a66, transparent 65%), #120d24;
+    color: white;
+}
+
+/* 🔥 Card */
+.leave-card {
+    background: rgba(22,16,44,0.78); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(24px);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    padding: 30px 20px;
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+}
+
+/* 🔥 Image */
+.custom-png {
+    width: 220px;
+    margin-bottom: 10px;
+}
+
+/* 🔥 Text */
+.message-main {
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.message-sub {
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 15px;
+}
+
+/* 🔥 Buttons */
+.button-container {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.btn {
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: none;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: 0.2s;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
+
+.btn-rejoin {
+    background: #e0456b;
+    color: white;
+}
+
+.btn-home {
+    background: rgba(255,255,255,0.12); color: white; border: 1px solid rgba(255,255,255,0.22);
+}
+
+/* 📱 Mobile */
+@media (max-width: 480px) {
+    .custom-png {
+        width: 180px;
+    }
+
+    .button-container {
+        flex-direction: column;
+    }
+}
+
+.leave-page { min-height: 100vh; }
+
+.leave-page .sum { margin: 0 0 22px; padding: 14px; border-radius: 16px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); text-align: left; }
+.leave-page .sum .room { font-size: 12px; font-weight: 600; color: rgba(255,255,255,.6); margin-bottom: 10px; }
+.leave-page .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
+.leave-page .stats b { display: block; font-size: 1.15rem; }
+.leave-page .stats span { font-size: .72rem; color: rgba(255,255,255,.6); }
+.leave-page .met { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.08); font-size: .78rem; color: rgba(255,255,255,.6); }
+
+.leave-page { position: relative; }
+.leave-page .brand-top { position: absolute; top: 22px; left: 26px; height: 40px; width: auto; }
