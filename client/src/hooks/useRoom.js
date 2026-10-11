@@ -8,12 +8,15 @@ export function useRoom(roomId, name, onSnapshot) {
   const [muted, setMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
   const [error, setError] = useState("");
+  const [game, setGame] = useState(null);
+  const [gameError, setGameError] = useState("");
   const socketRef = useRef(null);
   const streamRef = useRef(null);
   const startRef = useRef(Date.now());
   const seenRef = useRef(new Set());
   const countsRef = useRef({});
   const snapRef = useRef();
+  const stateRef = useRef({ muted: false, camOff: false });
   snapRef.current = onSnapshot;
 
   const react = useCallback((id, type) => setReactions((r) => ({ ...r, [id]: { type, key: Date.now() } })), []);
@@ -38,7 +41,7 @@ export function useRoom(roomId, name, onSnapshot) {
       streamRef.current = stream;
       setLocal(stream);
 
-      const make = (id, peerName, isMuted) => {
+      const make = (id, peerName, isMuted, isCamOff) => {
         if (pcs[id]) return pcs[id];
         const pc = new RTCPeerConnection({ iceServers });
         pcs[id] = pc;
@@ -47,13 +50,13 @@ export function useRoom(roomId, name, onSnapshot) {
         pc.ontrack = (e) => setPeers((p) => ({ ...p, [id]: { ...p[id], stream: e.streams[0] } }));
         pc.onicecandidate = (e) => e.candidate && socket.emit("ice-candidate", { candidate: e.candidate, to: id });
         seenRef.current.add(peerName);
-        setPeers((p) => ({ ...p, [id]: { ...p[id], name: peerName, muted: !!isMuted } }));
+        setPeers((p) => ({ ...p, [id]: { ...p[id], name: peerName, muted: !!isMuted, camOff: !!isCamOff } }));
         return pc;
       };
 
       socket.on("existing-users", async (users) => {
         for (const u of users) {
-          const pc = make(u.userId, u.name, u.muted);
+          const pc = make(u.userId, u.name, u.muted, u.camOff);
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           socket.emit("offer", { offer, to: u.userId });
@@ -81,7 +84,10 @@ export function useRoom(roomId, name, onSnapshot) {
         delete pcs[id];
         setPeers((p) => { const n = { ...p }; delete n[id]; return n; });
       });
-      socket.on("media-state", ({ userId, muted }) => setPeers((p) => (p[userId] ? { ...p, [userId]: { ...p[userId], muted } } : p)));
+      socket.on("media-state", ({ userId, muted, camOff }) => setPeers((p) => (p[userId] ? { ...p, [userId]: { ...p[userId], muted, camOff } } : p)));
+      // msLeft is "time remaining" from the server, so every screen counts down correctly even if clocks differ
+      socket.on("game:state", (s) => { setGame({ ...s, endAt: s.msLeft != null ? Date.now() + s.msLeft : null }); setGameError(""); });
+      socket.on("game:error", (m) => setGameError(m));
       socket.on("snapshot", () => snapRef.current?.());
       socket.on("reaction", ({ userId, type }) => react(userId, type));
 
@@ -111,6 +117,11 @@ export function useRoom(roomId, name, onSnapshot) {
   return {
     local, peers, reactions, muted, camOff, error, sendReaction,
     requestSnapshot: () => socketRef.current?.emit("snapshot"),
+    game, gameError,
+    startGame: () => socketRef.current?.emit("game:start"),
+    accuse: (targetId) => socketRef.current?.emit("game:accuse", { targetId }),
+    endGame: () => socketRef.current?.emit("game:end"),
+    clearGame: () => { setGame(null); setGameError(""); },
     getSummary: () => {
       const c = countsRef.current, top = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
       return { room: roomId, mins: Math.max(1, Math.round((Date.now() - startRef.current) / 60000)), people: [...seenRef.current],
@@ -120,9 +131,17 @@ export function useRoom(roomId, name, onSnapshot) {
       const tracks = streamRef.current?.getAudioTracks() || [];
       tracks.forEach((t) => (t.enabled = !t.enabled));
       const m = tracks.length ? !tracks[0].enabled : false;
+      stateRef.current.muted = m;
       setMuted(m);
-      socketRef.current?.emit("media-state", { muted: m });
+      socketRef.current?.emit("media-state", stateRef.current);
     },
-    toggleCam: toggle("video", setCamOff)
+    toggleCam: () => {
+      const tracks = streamRef.current?.getVideoTracks() || [];
+      tracks.forEach((t) => (t.enabled = !t.enabled));
+      const off = tracks.length ? !tracks[0].enabled : false;
+      stateRef.current.camOff = off;
+      setCamOff(off);
+      socketRef.current?.emit("media-state", stateRef.current);
+    }
   };
 }

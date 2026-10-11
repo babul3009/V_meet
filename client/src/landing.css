@@ -1,4 +1,4 @@
-.landing-page, .landing-page * {
+:where(.landing-page, .landing-page *) {
     margin: 0;
     padding: 0;
     box-sizing: border-box;

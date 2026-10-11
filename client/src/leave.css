@@ -1,4 +1,4 @@
-.leave-page, .leave-page * {
+:where(.leave-page, .leave-page *) {
     margin: 0;
     padding: 0;
     box-sizing: border-box;

@@ -22,6 +22,32 @@ app.get("/api/ice", (req, res) => {
 app.use(express.static(dist));
 app.get("/{*splat}", (req, res) => res.sendFile(path.join(dist, "index.html")));
 
+const rmcs = require("./rmcs");
+const games = new Map();                                   // roomId -> { game, timer }
+const ACTIVE = ["role", "discuss", "accuse", "reveal"];    // phases where a game is running
+
+// Tell every player in the game what THEY are allowed to see (never the same message for all).
+function sendGame(roomId) {
+  const e = games.get(roomId);
+  if (!e) return;
+  const msLeft = e.game.deadline ? Math.max(0, e.game.deadline - Date.now()) : null;
+  for (const p of e.game.players) io.to(p.id).emit("game:state", { ...rmcs.viewFor(e.game, p.id), you: p.id, msLeft });
+}
+// One timer per game: when the phase deadline passes, move the game on and tell everyone.
+function schedule(roomId) {
+  const e = games.get(roomId);
+  if (!e) return;
+  clearTimeout(e.timer);
+  if (e.game.deadline) e.timer = setTimeout(() => { rmcs.advance(e.game); sendGame(roomId); schedule(roomId); }, Math.max(0, e.game.deadline - Date.now()));
+}
+function stopGame(roomId, byId, reason) {
+  const e = games.get(roomId);
+  if (!e || !ACTIVE.includes(e.game.phase)) return;
+  clearTimeout(e.timer);
+  reason === "ended_by" ? rmcs.endGame(e.game, byId) : rmcs.playerLeft(e.game, byId, reason);
+  sendGame(roomId);
+}
+
 const REACTIONS = new Set(["👍", "❤️", "✌️", "✋", "🤟", "☝️"]);
 
 io.on("connection", (socket) => {
@@ -29,10 +55,11 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     socket.data.roomId = roomId;
     socket.data.name = String(name || "Guest").slice(0, 30);
+    stopGame(roomId, socket.id, "player_joined");           // a 5th person joining breaks the 4-player rule
 
     const users = [];
     for (const id of io.sockets.adapter.rooms.get(roomId) || []) {
-      if (id !== socket.id) users.push({ userId: id, name: io.sockets.sockets.get(id)?.data?.name || "Guest", muted: !!io.sockets.sockets.get(id)?.data?.muted });
+      if (id !== socket.id) users.push({ userId: id, name: io.sockets.sockets.get(id)?.data?.name || "Guest", muted: !!io.sockets.sockets.get(id)?.data?.muted, camOff: !!io.sockets.sockets.get(id)?.data?.camOff });
     }
     socket.emit("existing-users", users);
     socket.to(roomId).emit("user-joined", { userId: socket.id, name: socket.data.name });
@@ -52,16 +79,52 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("game:start", () => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const old = games.get(roomId);
+    if (old && ACTIVE.includes(old.game.phase)) return;     // already running
+    const ids = [...(io.sockets.adapter.rooms.get(roomId) || [])];
+    if (ids.length !== 4) return socket.emit("game:error", `Needs exactly 4 players (${ids.length} here)`);
+    if (old) clearTimeout(old.timer);
+    const players = ids.map((id) => ({ id, name: io.sockets.sockets.get(id)?.data?.name || "Guest" }));
+    games.set(roomId, { game: rmcs.createGame(players), timer: null });
+    sendGame(roomId);
+    schedule(roomId);
+  });
+
+  socket.on("game:accuse", ({ targetId }) => {
+    const e = games.get(socket.data.roomId);
+    if (!e) return;
+    try { rmcs.accuse(e.game, socket.id, targetId); }       // the rulebook checks who may accuse whom
+    catch (err) { return socket.emit("game:error", err.message); }
+    sendGame(socket.data.roomId);
+    schedule(socket.data.roomId);
+  });
+
+  socket.on("game:end", () => {
+    const e = games.get(socket.data.roomId);
+    if (e && e.game.players.some((p) => p.id === socket.id)) stopGame(socket.data.roomId, socket.id, "ended_by");
+  });
+
   socket.on("snapshot", () => {
     if (socket.data.roomId) io.to(socket.data.roomId).emit("snapshot");
   });
 
-  socket.on("media-state", ({ muted }) => {
+  socket.on("media-state", ({ muted, camOff }) => {
     socket.data.muted = !!muted;
-    if (socket.data.roomId) socket.to(socket.data.roomId).emit("media-state", { userId: socket.id, muted: !!muted });
+    socket.data.camOff = !!camOff;
+    if (socket.data.roomId) socket.to(socket.data.roomId).emit("media-state", { userId: socket.id, muted: !!muted, camOff: !!camOff });
+  });
+
+  socket.on("disconnect", () => {
+    const rid = socket.data.roomId, e = games.get(rid);
+    if (e && !io.sockets.adapter.rooms.get(rid)) { clearTimeout(e.timer); games.delete(rid); }   // room is empty: forget the game
   });
 
   socket.on("disconnecting", () => {
+    const e = games.get(socket.data.roomId);
+    if (e && e.game.players.some((p) => p.id === socket.id)) stopGame(socket.data.roomId, socket.id, "player_left");
     for (const room of socket.rooms) if (room !== socket.id) socket.to(room).emit("user-left", socket.id);
   });
 });

@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Mic, MicOff, Video, VideoOff, Phone, Link2, Check, Smile, Users, Camera } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Mic, MicOff, Video, VideoOff, Phone, Link2, Check, Smile, Users, Camera, Gamepad2 } from "lucide-react";
 import { useRoom } from "./hooks/useRoom.js";
 import { useGestures } from "./hooks/useGestures.js";
 import { takeSnapshot } from "./snapshot.js";
+import { GameBar, GameOverlays, ResultBanner, tileGame, PLAYING } from "./Game.jsx";
 import "./room.css";
 
 const EMOJIS = ["👍", "❤️", "✌️", "✋", "🤟", "☝️"];
@@ -47,15 +48,21 @@ function Fx({ type, who }) {
   );
 }
 
-function Tile({ stream, name, me, off, muted, reaction, vref, size }) {
+const hueOf = (s) => [...s].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7);
+
+function Tile({ stream, name, me, off, muted, reaction, vref, size, g }) {
   const own = useRef();
   const ref = vref || own;
   useEffect(() => { if (ref.current) ref.current.srcObject = stream || null; }, [stream, ref]);
   return (
-    <div className={`tile${me ? " me" : ""}`} style={{ width: size.w, height: size.h }}>
+    <div className={`tile${me ? " me" : ""}${g?.ring ? " ring" : ""}${g?.pulse ? " pulse" : ""}`} style={{ width: size.w, height: size.h, "--h": hueOf(name) }} onClick={g?.ring ? g.onPick : undefined}>
       <video ref={ref} autoPlay playsInline muted={!!me} />
-      {off && <div className="ph"><span>{name[0]?.toUpperCase()}</span></div>}
+      {off && <div className="camoff"><span>{name[0]?.toUpperCase()}</span><em>Camera off</em></div>}
+      {g?.badge && <span className="badge glass">{g.badge}</span>}
+      {g && <span className="score glass">{g.score}</span>}
       <span className="name glass">{name}</span>
+      {g?.ring && <button className="acc">Accuse</button>}
+      {g?.plus != null && <span className="plus">+{g.plus}</span>}
       {muted && <span className="mic-off glass"><MicOff size={14} /></span>}
       {reaction && <Fx key={reaction.key} type={reaction.type} who={name} />}
     </div>
@@ -67,6 +74,9 @@ function Meeting({ roomId, name }) {
   const [copied, setCopied] = useState(false);
   const [count, setCount] = useState(0);
   const [shot, setShot] = useState(null);
+  const [panel, setPanel] = useState(false);     // games panel open?
+  const [confirm, setConfirm] = useState(null);  // player the Mantri is about to accuse
+  const [endAsk, setEndAsk] = useState(false);   // "end the game?" question open?
   const busy = useRef(false);
   const vref = useRef();
   const stageRef = useRef();
@@ -89,6 +99,11 @@ function Meeting({ roomId, name }) {
   const peers = Object.entries(r.peers);
   const n = peers.length + 1;
   const size = useFit(stageRef, n);
+  const game = r.game;
+  const playing = !!game && PLAYING.includes(game.phase);
+  useEffect(() => { if (game?.phase !== "accuse") setConfirm(null); }, [game?.phase]);
+  const gameClear = () => { r.clearGame(); setPanel(false); };
+  const closePanel = useCallback(() => setPanel(false), []);
   const gesture = useGestures(vref, !!r.local && !r.camOff, r.sendReaction);
 
   const copy = async () => {
@@ -106,6 +121,7 @@ function Meeting({ roomId, name }) {
       <svg width="0" height="0" style={{ position: "absolute" }}>
         <defs><linearGradient id="hg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ff7aa2" /><stop offset="1" stopColor="#f43f6e" /></linearGradient></defs>
       </svg>
+      {playing ? <GameBar game={game} onEnd={() => setEndAsk(true)} /> : (
       <header className="bar">
         <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <img className="brand-icon" src="/assests/logo-icon-white.png" alt="Vmeet" />
@@ -117,14 +133,15 @@ function Meeting({ roomId, name }) {
           <span className="chip glass" title="Hand gesture detection">✋ {gesture === "on" ? "on" : gesture === "error" ? "unavailable" : "loading…"}</span>
           <span className="chip glass"><Users size={14} /> {n}</span>
         </span>
-      </header>
+      </header>)}
       {r.error && <div className="notice">{r.error}</div>}
 
       <section className="stage" ref={stageRef}>
-        <Tile me name="You" size={size} off={r.camOff} muted={r.muted} stream={r.local} vref={vref} reaction={r.reactions.me} />
+        <Tile me name="You" size={size} off={r.camOff} muted={r.muted} stream={r.local} vref={vref} reaction={r.reactions.me} g={tileGame(game, game?.you, setConfirm)} />
         {peers.map(([id, p]) => (
-          <Tile key={id} name={p.name || "Guest"} size={size} muted={p.muted} stream={p.stream} reaction={r.reactions[id]} />
+          <Tile key={id} name={p.name || "Guest"} size={size} off={p.camOff} muted={p.muted} stream={p.stream} reaction={r.reactions[id]} g={tileGame(game, id, setConfirm)} />
         ))}
+        {game && <ResultBanner game={game} />}
       </section>
 
       <footer className="dock-wrap">
@@ -138,9 +155,13 @@ function Meeting({ roomId, name }) {
           <button className={r.camOff ? "on" : ""} onClick={r.toggleCam} title={r.camOff ? "Camera on" : "Camera off"}>{r.camOff ? <VideoOff size={20} /> : <Video size={20} />}</button>
           <button onClick={() => setTray((v) => !v)} title="Reactions"><Smile size={20} /></button>
           <button onClick={r.requestSnapshot} title="Group snapshot"><Camera size={20} /></button>
+          <button className={playing || panel ? "gon" : ""} onClick={() => !playing && setPanel((v) => !v)} title="Games"><Gamepad2 size={20} /></button>
           <button className="leave" onClick={leave} title="Leave"><Phone size={22} style={{ transform: "rotate(135deg)" }} /></button>
         </nav>
       </footer>
+
+      <GameOverlays game={game} n={n} panel={panel} closePanel={closePanel} error={r.gameError} start={r.startGame} confirm={confirm} setConfirm={setConfirm}
+        accuse={r.accuse} endAsk={endAsk} setEndAsk={setEndAsk} end={r.endGame} clear={gameClear} />
 
       {count > 0 && <div className="count"><span key={count}>{count}</span></div>}
       {shot && (

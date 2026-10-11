@@ -21,7 +21,7 @@ export function takeSnapshot(roomId) {
     const v = t.querySelector("video"), nm = t.querySelector(".name")?.textContent || "";
     x.save(); x.beginPath(); x.roundRect(px, py, cw, ch, 22); x.clip();
     x.fillStyle = "#241a45"; x.fillRect(px, py, cw, ch);
-    if (v && v.videoWidth && !t.querySelector(".ph")) {
+    if (v && v.videoWidth && !t.querySelector(".camoff")) {
       const s = Math.max(cw / v.videoWidth, ch / v.videoHeight), sw = cw / s, sh = ch / s;
       const sx = (v.videoWidth - sw) / 2, sy = (v.videoHeight - sh) / 2;
       if (t.classList.contains("me")) { x.translate(px + cw, py); x.scale(-1, 1); x.drawImage(v, sx, sy, sw, sh, 0, 0, cw, ch); }

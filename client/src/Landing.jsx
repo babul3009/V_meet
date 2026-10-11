@@ -52,6 +52,11 @@ export default function Landing() {
             <h3>Zero Downloads</h3>
             <p>Works directly in browser.</p>
           </div>
+          <div className="feature">
+            <i className="fa-solid fa-gamepad icon"></i>
+            <h3>Games with Friends</h3>
+            <p>Play Raja Mantri Chor Sipahi in the call.</p>
+          </div>
         </div>
 
         <div className="footer">

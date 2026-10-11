@@ -1,11 +1,12 @@
 {
   "name": "project-v",
-  "version": "2.0.0",
+  "version": "1.3.1",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
     "dev": "node --watch server/server.js",
-    "build": "npm --prefix client install --include=dev && npm --prefix client run build"
+    "build": "npm --prefix client install --include=dev && npm --prefix client run build",
+    "test": "node --test server/rmcs.test.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
